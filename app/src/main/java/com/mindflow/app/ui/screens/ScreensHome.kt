@@ -278,15 +278,17 @@ private fun ArenaTab(
         }
         item { SectionTitle("QUICK PLAY") }
         item {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.fillMaxWidth().height(320.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                userScrollEnabled = false
-            ) {
-                items(GameMode.entries.toList()) { mode ->
-                    ModeCard(mode) { onOpenPlay(mode, -1, null) }
+            val modes = GameMode.entries.toList()
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                modes.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { mode ->
+                            Box(Modifier.weight(1f)) {
+                                ModeCard(mode) { onOpenPlay(mode, -1, null) }
+                            }
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
                 }
             }
         }

@@ -37,11 +37,11 @@ object LevelEngine {
     val chapters = listOf("Foundations", "Focus", "Calculation", "Logic Lab", "Mastermind")
 
     private val chapterModes = listOf(
-        listOf(GameMode.MATH_SPRINT, GameMode.PATTERN),
-        listOf(GameMode.MEMORY, GameMode.MATH_SPRINT),
-        listOf(GameMode.MATH_SPRINT, GameMode.LOGIC),
-        listOf(GameMode.LOGIC, GameMode.PATTERN),
-        listOf(GameMode.REFLEX, GameMode.MEMORY, GameMode.LOGIC)
+        listOf(GameMode.MATH_SPRINT, GameMode.PATTERN, GameMode.MEMORY),
+        listOf(GameMode.MEMORY, GameMode.MATH_SPRINT, GameMode.CROSS_MATH),
+        listOf(GameMode.MATH_SPRINT, GameMode.CROSS_MATH, GameMode.MAZE),
+        listOf(GameMode.LOGIC, GameMode.PATTERN, GameMode.CLASSIC),
+        listOf(GameMode.MAZE, GameMode.CLASSIC, GameMode.LOGIC, GameMode.REFLEX, GameMode.MEMORY)
     )
 
     val levels: List<Level> = (1..100).map { id ->

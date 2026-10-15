@@ -65,6 +65,33 @@ object GameContent {
         }
     }
 
+    /** Percentages of a base chosen so the answer is a whole number. */
+    fun percentQuestion(difficulty: Int, rnd: Random): Question {
+        val pct = listOf(10, 20, 25, 50, 75).random(rnd)
+        val base = rnd.nextInt(2, 12) * 20
+        val answer = base * pct / 100
+        return Question("$pct% of $base", answer)
+    }
+
+    /** Simple fractions of a whole, with an integer result. */
+    fun fractionQuestion(difficulty: Int, rnd: Random): Question {
+        val (num, den) = listOf(1 to 2, 1 to 3, 2 to 3, 1 to 4, 3 to 4).random(rnd)
+        val whole = den * rnd.nextInt(3, 13)
+        val answer = whole * num / den
+        return Question("$num/$den of $whole", answer)
+    }
+
+    /** Math Sprint question mix: arithmetic, plus percentages and fractions at higher difficulty. */
+    fun mathSprintQuestion(difficulty: Int, rnd: Random): Question {
+        val d = difficulty.coerceIn(1, 5)
+        val roll = rnd.nextInt(100)
+        return when {
+            d >= 3 && roll < 18 -> percentQuestion(d, rnd)
+            d >= 3 && roll < 30 -> fractionQuestion(d, rnd)
+            else -> mathQuestion(d, rnd)
+        }
+    }
+
     /** Arithmetic / geometric sequence with the final term missing. */
     fun patternQuestion(difficulty: Int, rnd: Random): Question {
         val d = difficulty.coerceIn(1, 5)

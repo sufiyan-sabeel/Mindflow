@@ -8,9 +8,12 @@ enum class Skill { MATH, LOGIC, MEMORY, PUZZLE }
 /** Every playable game mode. Kept as a closed enum so the level engine can target them. */
 enum class GameMode(val title: String, val skill: Skill) {
     MATH_SPRINT("Math Sprint", Skill.MATH),
+    CROSS_MATH("Cross-Math", Skill.MATH),
+    MAZE("Math Maze", Skill.LOGIC),
     PATTERN("Pattern Logic", Skill.LOGIC),
     MEMORY("Memory Challenge", Skill.MEMORY),
-    LOGIC("Logic Grid", Skill.LOGIC),
+    LOGIC("Logic Lab", Skill.LOGIC),
+    CLASSIC("Classic Puzzles", Skill.PUZZLE),
     REFLEX("Speed Reflex", Skill.PUZZLE);
 
     companion object {

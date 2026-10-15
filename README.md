@@ -15,8 +15,8 @@ Pre-built APKs are attached to the [Releases](../../releases) page:
 
 | File | Type | Size |
 |------|------|------|
-| `Mindflow-1.0.0-release.apk` | Signed release build | ~6.6 MB |
-| `Mindflow-1.0.0-debug.apk` | Debug build | ~9.5 MB |
+| `Mindflow-1.1.0-release.apk` | Signed release build | ~6.6 MB |
+| `Mindflow-1.1.0-debug.apk` | Debug build | ~9.6 MB |
 
 Install on a device with **Android 7.0 (API 24) or newer**. Enable "Install unknown apps" for your
 file manager / browser if prompted.
@@ -27,11 +27,14 @@ file manager / browser if prompted.
 
 This is a functioning app, not a mock-up. Everything below is implemented and playable offline:
 
-- **5 playable game modes**, each with its own generator, validation and scoring:
-  - **Math Sprint** — timed arithmetic (+, −, ×, ÷), numeric keypad, streak tracking.
-  - **Pattern Logic** — arithmetic/geometric sequence completion (multiple choice).
+- **8 playable game modes**, each with its own generator, answer validation and scoring:
+  - **Math Sprint** — timed arithmetic (+, −, ×, ÷) plus percentages and fractions; numeric keypad, streak tracking.
+  - **Cross-Math** — a 3×3 grid of numbers and operators; every row and column must evaluate to its target. Undo/reset/check.
+  - **Math Maze** — traverse a grid top-left to bottom-right (right/down only) collecting numbers to hit an exact target, avoiding blocked cells.
   - **Memory Challenge** — memorise a digit sequence, then reproduce it.
-  - **Logic Grid** — deduction questions (digit sums, largest value, squares sequences).
+  - **Logic Lab** — deduction questions (digit sums, largest value, squares sequences).
+  - **Pattern Logic** — arithmetic/geometric sequence completion (multiple choice).
+  - **Classic Puzzles** — mini-Sudoku (4×4 and 6×6) with unique-solution generation.
   - **Speed Reflex** — reaction-time rounds with early-tap detection.
 - **100-level campaign** across five chapters (Foundations, Focus, Calculation, Logic Lab,
   Mastermind). Levels are generated from structured config — content is produced algorithmically,
@@ -80,6 +83,9 @@ app/
       Engine.kt                 Level engine, Elo rating, daily challenges, achievements, time
     game/
       GameContent.kt            Deterministic, testable question/sequence generators
+      CrossMath.kt              Cross-Math generator + uniqueness solver + validation
+      MathMaze.kt               Math Maze generator + path solver + validation
+      MiniSudoku.kt             Mini-Sudoku generator + solution counter + validation
     ui/
       AppViewModel.kt           State holder; records results, updates ratings/XP/achievements
       Nav.kt                    Navigation graph and routes
@@ -87,11 +93,26 @@ app/
       components/Common.kt      Reusable composables (cards, buttons, keypad, stat tiles)
       screens/
         ScreensHome.kt          Splash, onboarding, Arena/Puzzles/Compete/Feed/More
-        ScreensPlay.kt          Gameplay for all five modes + results overlay
+        ScreensPlay.kt          Gameplay for all eight modes + results overlay
         ScreensMisc.kt          Leaderboard, profile, settings, daily challenges
   src/test/java/com/mindflow/app/
-    EngineTest.kt               10 unit tests for generators, ratings, levels, daily seeding
+    EngineTest.kt               10 tests: generators, ratings, levels, daily seeding
+    GameEngineTest.kt           17 tests: Cross-Math uniqueness, Maze solvability, Sudoku uniqueness
 ```
+
+### Game engine guarantees
+
+Every puzzle is generated, not hand-authored, and each generator is verified by unit tests:
+
+- **Cross-Math** starts from a solved grid, then removes givens one at a time, keeping the puzzle
+  only while a backtracking solver still finds **exactly one** solution.
+- **Math Maze** derives its target from a real right/down path and confirms reachability with a
+  dynamic-programming path counter, so a solution always exists.
+- **Mini-Sudoku** fills a valid Latin-square grid, then removes cells while a solution counter still
+  reports **exactly one** solution.
+- **Answer checking** is separate from generation: `CrossMath.isSolved`, `MathMaze.validatePath`
+  (which rejects wrong moves, blocked cells and wrong sums with a specific reason) and
+  `MiniSudoku.isSolved` all validate player input against the rules, not against a stored answer.
 
 **Data flow:** UI → `AppViewModel` → `AppRepository` (DataStore) → `StateFlow<AppState>` → UI.
 Game rules live in `domain/` and `game/` and are independent of Compose, so they are unit-testable.

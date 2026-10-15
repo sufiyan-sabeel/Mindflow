@@ -37,7 +37,11 @@ import com.mindflow.app.data.GameResult
 import com.mindflow.app.domain.LevelEngine
 import com.mindflow.app.domain.RatingEngine
 import com.mindflow.app.domain.Time
+import com.mindflow.app.game.CrossMath
 import com.mindflow.app.game.GameContent
+import com.mindflow.app.game.MathMaze
+import com.mindflow.app.game.MiniSudoku
+import com.mindflow.app.game.PathCheck
 import com.mindflow.app.game.Question
 import com.mindflow.app.ui.AppViewModel
 import com.mindflow.app.ui.components.AnswerFeedback
@@ -95,6 +99,9 @@ fun PlayScreen(
             Box(Modifier.fillMaxSize()) {
                 when (mode) {
                     GameMode.MATH_SPRINT -> MathSprintGame(difficulty, count, timeLimit, seed) { metrics = it }
+                    GameMode.CROSS_MATH -> CrossMathGame(difficulty, seed) { metrics = it }
+                    GameMode.MAZE -> MazeGame(difficulty, seed) { metrics = it }
+                    GameMode.CLASSIC -> SudokuGame(difficulty, seed) { metrics = it }
                     GameMode.PATTERN, GameMode.LOGIC -> MultipleChoiceGame(mode, difficulty, count, timeLimit, seed) { metrics = it }
                     GameMode.MEMORY -> MemoryGame(difficulty, count, seed) { metrics = it }
                     GameMode.REFLEX -> ReflexGame(count, seed) { metrics = it }
@@ -173,7 +180,7 @@ private fun MathSprintGame(
     seed: Random,
     onFinish: (SessionMetrics) -> Unit
 ) {
-    var question by remember { mutableStateOf(GameContent.mathQuestion(difficulty, seed)) }
+    var question by remember { mutableStateOf(GameContent.mathSprintQuestion(difficulty, seed)) }
     var input by remember { mutableStateOf("") }
     var correct by remember { mutableIntStateOf(0) }
     var total by remember { mutableIntStateOf(0) }
@@ -210,7 +217,7 @@ private fun MathSprintGame(
         }
         input = ""
         if (total >= count) finish() else {
-            question = GameContent.mathQuestion(difficulty, seed)
+            question = GameContent.mathSprintQuestion(difficulty, seed)
             questionShownAt = System.currentTimeMillis()
         }
     }
@@ -514,6 +521,319 @@ private fun ReflexGame(
             color = TextSecondary,
             textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+private fun CrossMathGame(difficulty: Int, seed: Random, onFinish: (SessionMetrics) -> Unit) {
+    val puzzle = remember { CrossMath.generate(difficulty, seed) }
+    val n = puzzle.size
+    var cells by remember {
+        mutableStateOf(
+            List(n * n) { i ->
+                val r = i / n; val c = i % n
+                if (puzzle.isGiven(r, c)) puzzle.given(r, c) else null
+            }
+        )
+    }
+    var selected by remember { mutableIntStateOf(-1) }
+    var attempts by remember { mutableIntStateOf(0) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var finished by remember { mutableStateOf(false) }
+    val startedAt = remember { System.currentTimeMillis() }
+
+    fun check() {
+        if (finished) return
+        attempts++
+        val grid = List(n) { r -> List(n) { c -> cells[r * n + c] } }
+        if (CrossMath.isSolved(grid, puzzle)) {
+            finished = true
+            onFinish(SessionMetrics(1, attempts, 1, System.currentTimeMillis() - startedAt))
+        } else {
+            message = "Not solved yet — every row and column must hit its target."
+        }
+    }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text(
+            "Fill the blanks so every row and column equals its target.",
+            style = MaterialTheme.typography.bodyMedium, color = TextSecondary
+        )
+        Spacer(Modifier.height(14.dp))
+        for (r in 0 until n) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                for (c in 0 until n) {
+                    val idx = r * n + c
+                    val given = puzzle.isGiven(r, c)
+                    Surface(
+                        color = when {
+                            given -> Surface2
+                            idx == selected -> PrimaryPurple.copy(alpha = 0.30f)
+                            else -> Surface1
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor),
+                        modifier = Modifier.size(52.dp).clickable(enabled = !given) { selected = idx }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                cells[idx]?.toString() ?: "",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = if (given) TextSecondary else TextPrimary
+                            )
+                        }
+                    }
+                    if (c < n - 1) {
+                        Box(Modifier.width(28.dp), contentAlignment = Alignment.Center) {
+                            Text(puzzle.rowOps[r][c].symbol, color = TextSecondary)
+                        }
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Text("= ${puzzle.rowTargets[r]}", color = AccentLime, style = MaterialTheme.typography.titleMedium)
+            }
+            if (r < n - 1) {
+                Row {
+                    for (c in 0 until n) {
+                        Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+                            Text(puzzle.colOps[c][r].symbol, color = TextSecondary)
+                        }
+                        if (c < n - 1) Spacer(Modifier.width(28.dp))
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Row {
+            for (c in 0 until n) {
+                Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+                    Text("= ${puzzle.colTargets[c]}", color = AccentLime, style = MaterialTheme.typography.labelLarge)
+                }
+                if (c < n - 1) Spacer(Modifier.width(28.dp))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        message?.let { Text(it, color = ErrorRed, style = MaterialTheme.typography.bodyMedium) }
+        Spacer(Modifier.weight(1f))
+        DigitPad(
+            max = puzzle.maxValue,
+            onDigit = { v ->
+                if (selected >= 0 && !puzzle.isGiven(selected / n, selected % n)) {
+                    cells = cells.toMutableList().also { it[selected] = v }
+                    message = null
+                }
+            },
+            onClear = { selected = -1 }
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MfOutlineButton("Reset", {
+                cells = List(n * n) { i ->
+                    val r = i / n; val c = i % n
+                    if (puzzle.isGiven(r, c)) puzzle.given(r, c) else null
+                }
+                selected = -1; message = null
+            }, Modifier.weight(1f))
+            MfButton("Check", { check() }, Modifier.weight(1f), color = AccentLime)
+        }
+    }
+}
+
+@Composable
+private fun MazeGame(difficulty: Int, seed: Random, onFinish: (SessionMetrics) -> Unit) {
+    val puzzle = remember { MathMaze.generate(difficulty, seed) }
+    val n = puzzle.size
+    val end = (n - 1) to (n - 1)
+    var path by remember { mutableStateOf(emptyList<Pair<Int, Int>>()) }
+    var attempts by remember { mutableIntStateOf(0) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var finished by remember { mutableStateOf(false) }
+    val startedAt = remember { System.currentTimeMillis() }
+    val currentSum = path.sumOf { puzzle.cells[it.first][it.second] }
+
+    fun finishIfSolved() {
+        if (finished) return
+        attempts++
+        when (val res = MathMaze.validatePath(path, puzzle)) {
+            is PathCheck.Valid -> {
+                finished = true
+                onFinish(SessionMetrics(1, attempts, 1, System.currentTimeMillis() - startedAt))
+            }
+            is PathCheck.Invalid -> message = res.reason
+        }
+    }
+
+    fun tap(cell: Pair<Int, Int>) {
+        if (finished) return
+        message = null
+        when {
+            path.isEmpty() -> if (cell == (0 to 0)) path = listOf(cell)
+            cell == path.last() -> Unit
+            path.size >= 2 && cell == path[path.size - 2] -> path = path.dropLast(1)
+            cell in puzzle.blocked -> message = "That cell is blocked."
+            else -> {
+                val last = path.last()
+                val dr = cell.first - last.first
+                val dc = cell.second - last.second
+                if ((dr == 1 && dc == 0) || (dr == 0 && dc == 1)) {
+                    path = path + cell
+                    if (cell == end) finishIfSolved()
+                } else {
+                    message = "Move only right or down, to an adjacent cell."
+                }
+            }
+        }
+    }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text(
+            "From the top-left to the bottom-right, collect a sum of ${puzzle.target}. Right/down moves only.",
+            style = MaterialTheme.typography.bodyMedium, color = TextSecondary
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Sum: $currentSum / ${puzzle.target}",
+            style = MaterialTheme.typography.titleLarge,
+            color = if (currentSum == puzzle.target) AccentLime else TextPrimary
+        )
+        Spacer(Modifier.height(12.dp))
+        for (r in 0 until n) {
+            Row {
+                for (c in 0 until n) {
+                    val cell = r to c
+                    val inPath = cell in path
+                    val blocked = cell in puzzle.blocked
+                    Surface(
+                        color = when {
+                            blocked -> BorderColor.copy(alpha = 0.35f)
+                            inPath -> AccentLime.copy(alpha = 0.25f)
+                            else -> Surface1
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (inPath) AccentLime else BorderColor),
+                        modifier = Modifier.padding(3.dp).size(58.dp).clickable(enabled = !blocked) { tap(cell) }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                if (blocked) "✕" else puzzle.cells[r][c].toString(),
+                                color = if (blocked) TextSecondary else TextPrimary,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        message?.let { Text(it, color = ErrorRed, style = MaterialTheme.typography.bodyMedium) }
+        Spacer(Modifier.weight(1f))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MfOutlineButton("Undo", { if (path.isNotEmpty()) path = path.dropLast(1) }, Modifier.weight(1f))
+            MfOutlineButton("Clear", { path = emptyList(); message = null }, Modifier.weight(1f))
+            MfButton("Check", { finishIfSolved() }, Modifier.weight(1f), color = AccentLime)
+        }
+    }
+}
+
+@Composable
+private fun SudokuGame(difficulty: Int, seed: Random, onFinish: (SessionMetrics) -> Unit) {
+    val puzzle = remember { MiniSudoku.generate(difficulty, seed) }
+    val n = puzzle.size
+    var grid by remember { mutableStateOf(puzzle.givens.map { it.toList() }) }
+    var selected by remember { mutableIntStateOf(-1) }
+    var attempts by remember { mutableIntStateOf(0) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var finished by remember { mutableStateOf(false) }
+    val startedAt = remember { System.currentTimeMillis() }
+
+    fun check() {
+        if (finished) return
+        attempts++
+        if (MiniSudoku.isSolved(grid, puzzle)) {
+            finished = true
+            onFinish(SessionMetrics(1, attempts, 1, System.currentTimeMillis() - startedAt))
+        } else {
+            message = "Not solved — every row, column and box needs each number once."
+        }
+    }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text(
+            "Fill the grid so every row, column and ${puzzle.boxRows}×${puzzle.boxCols} box holds each number once.",
+            style = MaterialTheme.typography.bodyMedium, color = TextSecondary
+        )
+        Spacer(Modifier.height(14.dp))
+        for (r in 0 until n) {
+            Row {
+                for (c in 0 until n) {
+                    val given = puzzle.isGiven(r, c)
+                    val idx = r * n + c
+                    Surface(
+                        color = when {
+                            given -> Surface2
+                            idx == selected -> PrimaryPurple.copy(alpha = 0.30f)
+                            else -> Surface1
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor),
+                        modifier = Modifier.padding(2.dp).size(56.dp).clickable(enabled = !given) { selected = idx }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            val v = grid[r][c]
+                            Text(
+                                if (v == 0) "" else v.toString(),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = if (given) TextSecondary else PrimaryPurple
+                            )
+                        }
+                    }
+                    if (c < n - 1 && (c + 1) % puzzle.boxCols == 0) Spacer(Modifier.width(8.dp))
+                }
+            }
+            if (r < n - 1 && (r + 1) % puzzle.boxRows == 0) Spacer(Modifier.height(8.dp))
+        }
+        Spacer(Modifier.height(10.dp))
+        message?.let { Text(it, color = ErrorRed, style = MaterialTheme.typography.bodyMedium) }
+        Spacer(Modifier.weight(1f))
+        DigitPad(
+            max = n,
+            onDigit = { v ->
+                if (selected >= 0 && !puzzle.isGiven(selected / n, selected % n)) {
+                    val r = selected / n; val c = selected % n
+                    grid = grid.mapIndexed { ri, row -> if (ri == r) row.toMutableList().also { it[c] = v } else row }
+                    message = null
+                }
+            },
+            onClear = { selected = -1 }
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MfOutlineButton("Reset", {
+                grid = puzzle.givens.map { it.toList() }; selected = -1; message = null
+            }, Modifier.weight(1f))
+            MfButton("Check", { check() }, Modifier.weight(1f), color = AccentLime)
+        }
+    }
+}
+
+@Composable
+private fun DigitPad(max: Int, onDigit: (Int) -> Unit, onClear: () -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (v in 1..max) {
+                Surface(
+                    color = Surface2,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor),
+                    modifier = Modifier.weight(1f).clickable { onDigit(v) }
+                ) {
+                    Box(Modifier.padding(vertical = 14.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text("$v", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                    }
+                }
+            }
+        }
+        MfOutlineButton("Clear selection", onClear)
     }
 }
 
