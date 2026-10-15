@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="mindflow_background">#101010</color>
+    <color name="mindflow_surface">#1A1A1D</color>
+    <color name="mindflow_primary">#A995FF</color>
+    <color name="mindflow_accent">#B7FF59</color>
+</resources>
