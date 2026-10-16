@@ -32,6 +32,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -73,6 +75,7 @@ import com.mindflow.app.ui.theme.BorderColor
 import com.mindflow.app.ui.theme.PrimaryPurple
 import com.mindflow.app.ui.theme.SecondaryPurple
 import com.mindflow.app.ui.theme.Surface1
+import com.mindflow.app.ui.theme.Surface2
 import com.mindflow.app.ui.theme.TextPrimary
 import com.mindflow.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
@@ -155,7 +158,9 @@ fun HomeScreen(
     onOpenLeaderboard: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenDaily: () -> Unit
+    onOpenDaily: () -> Unit,
+    onOpenAccount: () -> Unit,
+    onOpenDuel: (GameMode, String) -> Unit
 ) {
     val state by vm.state.collectAsState()
     var tab by remember { mutableIntStateOf(0) }
@@ -193,9 +198,9 @@ fun HomeScreen(
             when (tab) {
                 0 -> ArenaTab(vm, state, onOpenPlay, onOpenDaily, onOpenLeaderboard, onOpenProfile)
                 1 -> PuzzlesTab(state, onOpenPlay, onOpenDaily)
-                2 -> CompeteTab(state, onOpenPlay, onOpenLeaderboard)
+                2 -> CompeteTab(vm, state, onOpenPlay, onOpenLeaderboard, onOpenAccount, onOpenDuel)
                 3 -> FeedTab(state)
-                else -> MoreTab(state, onOpenProfile, onOpenLeaderboard, onOpenSettings)
+                else -> MoreTab(state, onOpenProfile, onOpenLeaderboard, onOpenSettings, onOpenAccount)
             }
         }
     }
@@ -389,10 +394,20 @@ private fun LevelRow(
 
 @Composable
 private fun CompeteTab(
+    vm: AppViewModel,
     state: AppState,
     onOpenPlay: (GameMode, Int, String?) -> Unit,
-    onOpenLeaderboard: () -> Unit
+    onOpenLeaderboard: () -> Unit,
+    onOpenAccount: () -> Unit,
+    onOpenDuel: (GameMode, String) -> Unit
 ) {
+    val cloud by vm.cloudState.collectAsState()
+    val roomNow by vm.room.collectAsState()
+    val openRooms by vm.openRooms.collectAsState()
+    val matches by vm.matches.collectAsState()
+    var joinCode by remember { mutableStateOf("") }
+    var duelMode by remember { mutableStateOf(GameMode.MATH_SPRINT) }
+
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -411,18 +426,134 @@ private fun CompeteTab(
                 MfButton("Start practice duel", onClick = { onOpenPlay(GameMode.MATH_SPRINT, -1, null) })
             }
         }
-        item {
-            MfCard {
-                Text("Online Duels", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                Text(
-                    "Live matchmaking, private rooms and friend invites require a configured realtime backend (see README). Not enabled in this build.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
-                Spacer(Modifier.height(12.dp))
-                MfOutlineButton("Unavailable — backend not configured", {}, enabled = false)
+
+        item { SectionTitle("ONLINE DUELS") }
+        when {
+            !cloud.configured -> item {
+                MfCard {
+                    Text("Not configured in this build", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                    Text(
+                        "Online duels need a Supabase project. See SUPABASE_SETUP.md — the app stays fully playable offline without it.",
+                        style = MaterialTheme.typography.bodyMedium, color = TextSecondary
+                    )
+                }
+            }
+            !cloud.signedIn -> item {
+                MfCard {
+                    Text("Sign in to play online", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                    Text(
+                        "Private rooms with shareable codes and server-validated results.",
+                        style = MaterialTheme.typography.bodyMedium, color = TextSecondary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    MfButton("Account & Cloud", onOpenAccount)
+                }
+            }
+            roomNow != null -> {
+                val r = roomNow!!
+                item {
+                    MfCard {
+                        Text("Room ${r.code}", style = MaterialTheme.typography.displayLarge, color = TextPrimary)
+                        Text(
+                            "${r.mode} · ${r.status}",
+                            style = MaterialTheme.typography.bodyMedium, color = TextSecondary
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        r.players.forEach { p ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    if (p.is_me) "You" else p.display_name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = if (p.is_me) AccentLime else TextPrimary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    when {
+                                        p.submitted -> "score ${p.score}"
+                                        p.ready -> "ready"
+                                        else -> "waiting"
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (p.ready) AccentLime else TextSecondary
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        if (r.status == "playing") {
+                            MfButton("Play duel", { onOpenDuel(GameMode.fromId(r.mode), r.id) }, color = AccentLime)
+                        } else {
+                            val me = r.players.firstOrNull { it.is_me }
+                            MfButton(
+                                if (me?.ready == true) "Not ready" else "Ready",
+                                { vm.setRoomReady(me?.ready != true) }
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        MfOutlineButton("Leave room", { vm.leaveRoom() })
+                    }
+                }
+            }
+            else -> {
+                item {
+                    MfCard {
+                        Text("Create a private room", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                        Text("You'll get a 6-character code to share.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            GameMode.entries.take(4).forEach { m ->
+                                Surface(
+                                    color = if (duelMode == m) Surface2 else Surface1,
+                                    shape = RoundedCornerShape(50),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, if (duelMode == m) AccentLime else BorderColor),
+                                    modifier = Modifier.weight(1f).clickable { duelMode = m }
+                                ) {
+                                    Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            m.title.split(" ").first(),
+                                            color = if (duelMode == m) AccentLime else TextSecondary,
+                                            style = MaterialTheme.typography.labelLarge
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        MfButton("Create room", { vm.createRoom(duelMode.name) }, enabled = !cloud.busy)
+                    }
+                }
+                item {
+                    MfCard {
+                        Text("Join with a code", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = joinCode,
+                                onValueChange = { joinCode = it.uppercase().take(6) },
+                                label = { Text("Room code") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            MfButton("Join", { vm.joinRoom(joinCode) }, Modifier.width(90.dp), enabled = joinCode.length == 6 && !cloud.busy)
+                        }
+                    }
+                }
+                item { MfOutlineButton("Refresh open rooms", { vm.refreshOpenRooms() }) }
+                items(openRooms.size) { i ->
+                    val rr = openRooms[i]
+                    MfCard(onClick = { vm.joinRoom(rr.code) }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(rr.host_name, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                                Text("${rr.mode} · ${rr.players}/2", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                            }
+                            Text(rr.code, color = AccentLime, style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                }
             }
         }
+
         item { SectionTitle("YOUR RANKING") }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -436,6 +567,33 @@ private fun CompeteTab(
                 Text("Friends · Community · Global", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             }
         }
+        item { SectionTitle("MATCH HISTORY") }
+        if (matches.isEmpty()) {
+            item {
+                Text(
+                    if (cloud.signedIn) "No online matches yet." else "Sign in to record online matches.",
+                    style = MaterialTheme.typography.bodyMedium, color = TextSecondary
+                )
+            }
+        } else {
+            items(matches.size) { i ->
+                val m = matches[i]
+                MfCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("vs ${m.opponent}", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                            Text(m.mode, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                        }
+                        Text(
+                            if (m.drawn) "Draw" else if (m.won) "Win" else "Loss",
+                            color = if (m.won) AccentLime else TextSecondary,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
+            }
+        }
+        if (cloud.signedIn) item { MfOutlineButton("Refresh matches", { vm.refreshMatches() }) }
     }
 }
 
@@ -492,7 +650,8 @@ private fun MoreTab(
     state: AppState,
     onOpenProfile: () -> Unit,
     onOpenLeaderboard: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenAccount: () -> Unit
 ) {
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -514,6 +673,15 @@ private fun MoreTab(
         }
         item { MfCard(onClick = onOpenLeaderboard) { Text("Leaderboards", style = MaterialTheme.typography.titleMedium, color = TextPrimary) } }
         item { MfCard(onClick = onOpenSettings) { Text("Settings", style = MaterialTheme.typography.titleMedium, color = TextPrimary) } }
+        item {
+            MfCard(onClick = onOpenAccount) {
+                Text("Account & Cloud", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                Text(
+                    "Sign in, sync progress, online duels",
+                    style = MaterialTheme.typography.bodyMedium, color = TextSecondary
+                )
+            }
+        }
         item {
             MfCard {
                 Text("About Mindflow", style = MaterialTheme.typography.titleMedium, color = TextPrimary)

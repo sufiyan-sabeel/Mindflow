@@ -15,8 +15,8 @@ Pre-built APKs are attached to the [Releases](../../releases) page:
 
 | File | Type | Size |
 |------|------|------|
-| `Mindflow-1.1.0-release.apk` | Signed release build | ~6.6 MB |
-| `Mindflow-1.1.0-debug.apk` | Debug build | ~9.6 MB |
+| `Mindflow-1.2.0-release.apk` | Signed release build | ~8.6 MB |
+| `Mindflow-1.2.0-debug.apk` | Debug build | ~13 MB |
 
 Install on a device with **Android 7.0 (API 24) or newer**. Enable "Install unknown apps" for your
 file manager / browser if prompted.
@@ -51,20 +51,34 @@ This is a functioning app, not a mock-up. Everything below is implemented and pl
 - **Settings** — sound, haptics, reduced-motion and high-contrast toggles; progress reset.
 - **Offline persistence** — all progress is saved on-device and survives restarts.
 
-## What is intentionally NOT enabled
+## Online features (Supabase)
 
-The original spec asked for online accounts, cloud sync and real-time multiplayer. Those require an
-external backend and are **not** faked here:
+From 1.2.0 the app has a real backend: **Supabase** (free plan). See
+[SUPABASE_SETUP.md](SUPABASE_SETUP.md) for the full setup. Summary:
 
-- **Online duels / matchmaking / private rooms** — shown as "Unavailable — backend not configured".
-  A clearly-labelled *offline practice opponent* is offered instead. No bots are ever presented as
-  live players.
-- **Firebase auth, Cloud Firestore, cloud leaderboards** — not wired up. The app never claims a live
-  global ranking; the leaderboard is local + labelled sample data.
-- **Google sign-in** — not configured.
+- **Accounts** — email/password sign-up and sign-in, guest (anonymous) sign-in, sign-out.
+- **Cloud sync** — unsynced results are pushed, daily challenges claimed, and the server snapshot
+  merged back on a new device. Counters take the max, stars take the best, achievements union, so
+  local progress is never lost.
+- **Server-side validation** — XP, stars, score, rating and achievements are recomputed in Postgres.
+  The client's values for those fields are ignored. Results are idempotent by client id, so a retry
+  after a dropped connection cannot double-count.
+- **Real leaderboards** — Friends / Community / Global, weekly or all-time, with only genuine
+  registered players. Sample opponents remain **clearly labelled** and are only shown when signed out.
+- **Online duels** — private rooms with 6-character codes, a lobby with ready state, and
+  server-decided match results and Elo changes.
+- **Security** — Row Level Security on every table, no direct client writes to competitive tables,
+  and only the *publishable* key ships in the app. The service-role key is never embedded.
 
-To add these, provide a backend (e.g. Firebase) and implement the repository interfaces; the UI is
-already structured to degrade gracefully when the network is unavailable.
+Without configuration the app is unchanged: fully playable offline, with every online surface
+reporting itself as "not configured" rather than failing.
+
+### Still not implemented
+
+- Google/Apple OAuth buttons (provider plumbing exists; no UI).
+- Friend requests UI — the `friendships` table and policies exist, but no search/add/accept screen.
+- Realtime push for the duel lobby — Realtime is enabled on the tables, but the app polls instead.
+- A matchmaking queue — the app lists open rooms.
 
 ---
 
@@ -79,6 +93,11 @@ app/
       Models.kt                 Serializable domain models (AppState, PlayerProfile, GameResult, ...)
       AppRepository.kt          DataStore-backed JSON persistence (single source of truth)
       Achievement.kt            Achievement definition type
+      remote/
+        SupabaseProvider.kt     Builds the Supabase client from BuildConfig (publishable key only)
+        CloudRepository.kt      Auth + RPCs only; every call is best-effort so offline never breaks
+        Dtos.kt                 Wire types for the RPC surface
+    ../supabase/migrations/     Eight ordered SQL migrations (schema, RLS, functions, hardening)
     domain/
       Engine.kt                 Level engine, Elo rating, daily challenges, achievements, time
     game/
@@ -94,11 +113,15 @@ app/
       screens/
         ScreensHome.kt          Splash, onboarding, Arena/Puzzles/Compete/Feed/More
         ScreensPlay.kt          Gameplay for all eight modes + results overlay
-        ScreensMisc.kt          Leaderboard, profile, settings, daily challenges
+        ScreensMisc.kt          Leaderboard (live or sample), profile, settings, daily challenges
+        AccountScreen.kt        Sign in / sign up / guest, sync status, community tag
   src/test/java/com/mindflow/app/
     EngineTest.kt               10 tests: generators, ratings, levels, daily seeding
     GameEngineTest.kt           17 tests: Cross-Math uniqueness, Maze solvability, Sudoku uniqueness
 ```
+
+Continuous integration lives in `.github/workflows/android.yml`: it runs the unit tests and builds
+the APK on every push, and builds a signed release when keystore secrets are present.
 
 ### Game engine guarantees
 

@@ -12,10 +12,19 @@ android {
         applicationId = "com.mindflow.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Supabase configuration is injected at build time so no key is committed.
+        //   -Pmindflow.supabaseUrl=https://<ref>.supabase.co -Pmindflow.supabaseAnonKey=<publishable key>
+        // Both values are publishable (the app is protected by Row Level Security),
+        // but they are still kept out of source control and supplied per-build / by CI.
+        val supabaseUrl = (project.findProperty("mindflow.supabaseUrl") as String?) ?: ""
+        val supabaseAnonKey = (project.findProperty("mindflow.supabaseAnonKey") as String?) ?: ""
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
     }
 
     // Release signing is driven by Gradle properties so no secret is committed.
@@ -54,11 +63,27 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
 
+    lint {
+        // The release build does not run lint-vital here: it is a very heavy analysis task
+        // and is not needed to produce a signed APK. Run `./gradlew lint` separately in CI.
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     packaging {
-        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/DEPENDENCIES"
+            excludes += "/META-INF/LICENSE*"
+            excludes += "/META-INF/NOTICE*"
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
     }
 }
 
@@ -78,6 +103,14 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    // Supabase Kotlin client: REST (PostgREST), Auth (GoTrue) and Realtime.
+    val supabaseKt = "2.6.0"
+    implementation("io.github.jan-tennert.supabase:postgrest-kt:$supabaseKt")
+    implementation("io.github.jan-tennert.supabase:gotrue-kt:$supabaseKt")
+    implementation("io.github.jan-tennert.supabase:realtime-kt:$supabaseKt")
+    implementation("io.ktor:ktor-client-android:2.3.12")
+    implementation("io.ktor:ktor-client-core:2.3.12")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

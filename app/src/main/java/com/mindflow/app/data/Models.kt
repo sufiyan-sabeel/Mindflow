@@ -66,7 +66,11 @@ data class GameResult(
     val stars: Int,
     val xp: Int,
     val epochDay: Long,
-    val timestamp: Long
+    val timestamp: Long,
+    /** Stable id for cloud upload; also the server-side idempotency key. */
+    val clientId: String = "",
+    /** True once the server has accepted this result. */
+    val synced: Boolean = false
 ) {
     val accuracy: Double get() = if (total == 0) 0.0 else correct.toDouble() / total
 }

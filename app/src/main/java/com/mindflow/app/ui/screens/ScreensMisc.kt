@@ -24,6 +24,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -83,22 +85,23 @@ private fun BackBar(title: String, onBack: () -> Unit) {
 private data class LbEntry(val rank: Int, val name: String, val score: Int, val seed: Int, val isPlayer: Boolean)
 
 @Composable
-fun LeaderboardScreen(state: AppState, onBack: () -> Unit) {
+fun LeaderboardScreen(vm: AppViewModel, state: AppState, onBack: () -> Unit) {
+    val cloud by vm.cloudState.collectAsState()
+    val live by vm.leaderboard.collectAsState()
     var tab by remember { mutableIntStateOf(0) }
+    var period by remember { mutableIntStateOf(0) }
     val tabs = listOf("Friends", "Community", "Global")
-    val playerRating = state.profile.ratings.overall
+    val scopes = listOf("friends", "community", "global")
+    val periods = listOf("All-time", "Weekly")
 
-    // Clearly-labelled preview data. Never presented as a live leaderboard.
-    val sample = listOf(
-        LbEntry(1, "A. Nair", 1642, 3, false),
-        LbEntry(2, "J. Kumar", 1591, 5, false),
-        LbEntry(3, "L. Vats", 1520, 1, false),
-        LbEntry(4, "K. Shaikh", 1487, 4, false),
-        LbEntry(5, "S. Rao", 1410, 2, false)
-    )
-    val entries = (sample + LbEntry(0, state.profile.displayName + " (you)", playerRating, state.profile.avatarSeed, true))
-        .sortedByDescending { it.score }
-        .mapIndexed { i, e -> e.copy(rank = i + 1) }
+    LaunchedEffect(tab, period, cloud.signedIn) {
+        if (cloud.signedIn) {
+            vm.loadLeaderboard(scopes[tab], "score", "overall", if (period == 1) "weekly" else "all_time")
+        }
+    }
+
+    val liveRows = live
+    val showingLive = cloud.signedIn && liveRows != null
 
     Box(Modifier.fillMaxSize().background(Background)) {
         Column(Modifier.fillMaxSize()) {
@@ -118,29 +121,93 @@ fun LeaderboardScreen(state: AppState, onBack: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text(
-                "Preview data — sample opponents shown for development. Live global rankings require a configured backend.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(entries.size) { i ->
-                    val e = entries[i]
-                    MfCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${e.rank}", style = MaterialTheme.typography.titleLarge, color = if (e.isPlayer) AccentLime else TextPrimary, modifier = Modifier.width(36.dp))
-                            Avatar(e.seed, 36)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(e.name, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                                Text(RatingEngine.tier(e.score), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            if (showingLive) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    periods.forEachIndexed { i, p ->
+                        Surface(
+                            color = if (period == i) Surface2 else Surface1,
+                            shape = RoundedCornerShape(50),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (period == i) AccentLime else BorderColor),
+                            modifier = Modifier.clickable { period = i }
+                        ) {
+                            Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                Text(p, color = if (period == i) AccentLime else TextSecondary, style = MaterialTheme.typography.labelLarge)
                             }
-                            Text("${e.score}", style = MaterialTheme.typography.titleMedium, color = PrimaryPurple)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Live — real registered players only.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AccentLime,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                val rows = liveRows ?: emptyList()
+                if (rows.isEmpty()) {
+                    EmptyState(
+                        "No players yet",
+                        "Be the first to post a score in this board. Play a game while signed in and sync."
+                    )
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(rows.size) { i ->
+                            val row = rows[i]
+                            MfCard {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("${row.rank}", style = MaterialTheme.typography.titleLarge, color = TextPrimary, modifier = Modifier.width(36.dp))
+                                    Avatar(row.avatar_seed, 36)
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(row.display_name, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                                        Text(row.username, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                                    }
+                                    Text("${row.score}", style = MaterialTheme.typography.titleMedium, color = PrimaryPurple)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    "Preview data — sample opponents shown for development. Sign in to see live rankings of real players.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                val playerRating = state.profile.ratings.overall
+                val sample = listOf(
+                    LbEntry(1, "A. Nair", 1642, 3, false),
+                    LbEntry(2, "J. Kumar", 1591, 5, false),
+                    LbEntry(3, "L. Vats", 1520, 1, false),
+                    LbEntry(4, "K. Shaikh", 1487, 4, false),
+                    LbEntry(5, "S. Rao", 1410, 2, false)
+                )
+                val entries = (sample + LbEntry(0, state.profile.displayName + " (you)", playerRating, state.profile.avatarSeed, true))
+                    .sortedByDescending { it.score }
+                    .mapIndexed { i, e -> e.copy(rank = i + 1) }
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(entries.size) { i ->
+                        val e = entries[i]
+                        MfCard {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("${e.rank}", style = MaterialTheme.typography.titleLarge, color = if (e.isPlayer) AccentLime else TextPrimary, modifier = Modifier.width(36.dp))
+                                Avatar(e.seed, 36)
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(e.name, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                                    Text(RatingEngine.tier(e.score), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                                }
+                                Text("${e.score}", style = MaterialTheme.typography.titleMedium, color = PrimaryPurple)
+                            }
                         }
                     }
                 }

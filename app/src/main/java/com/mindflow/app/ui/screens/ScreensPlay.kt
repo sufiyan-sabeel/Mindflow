@@ -77,6 +77,7 @@ fun PlayScreen(
     modeId: String,
     levelId: Int,
     dailyId: String?,
+    roomId: String? = null,
     onExit: () -> Unit
 ) {
     val mode = GameMode.fromId(modeId)
@@ -139,6 +140,11 @@ fun PlayScreen(
                             ),
                             dailyChallengeId = dailyId
                         )
+                        // A duel result is also submitted to the room; the server computes
+                        // the authoritative score and decides the match.
+                        roomId?.let { rid ->
+                            vm.submitDuelScore(rid, m.correct, m.total, m.bestStreak)
+                        }
                     }
                 },
                 onRetry = { metrics = null; recorded = false },

@@ -8,6 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.mindflow.app.ui.screens.AccountScreen
 import com.mindflow.app.ui.screens.DailyChallengesScreen
 import com.mindflow.app.ui.screens.HomeScreen
 import com.mindflow.app.ui.screens.LeaderboardScreen
@@ -21,13 +22,15 @@ object Routes {
     const val SPLASH = "splash"
     const val ONBOARDING = "onboarding"
     const val HOME = "home"
-    const val PLAY = "play/{mode}/{levelId}/{dailyId}"
+    const val PLAY = "play/{mode}/{levelId}/{dailyId}/{roomId}"
     const val LEADERBOARD = "leaderboard"
     const val PROFILE = "profile"
     const val SETTINGS = "settings"
     const val DAILY = "daily"
+    const val ACCOUNT = "account"
 
-    fun play(mode: String, levelId: Int, dailyId: String = ""): String = "play/$mode/$levelId/$dailyId"
+    fun play(mode: String, levelId: Int, dailyId: String = "", roomId: String = ""): String =
+        "play/$mode/$levelId/$dailyId/$roomId"
 }
 
 @Composable
@@ -61,7 +64,9 @@ fun MindflowRoot(vm: AppViewModel) {
                 onOpenLeaderboard = { nav.navigate(Routes.LEADERBOARD) },
                 onOpenProfile = { nav.navigate(Routes.PROFILE) },
                 onOpenSettings = { nav.navigate(Routes.SETTINGS) },
-                onOpenDaily = { nav.navigate(Routes.DAILY) }
+                onOpenDaily = { nav.navigate(Routes.DAILY) },
+                onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
+                onOpenDuel = { mode, roomId -> nav.navigate(Routes.play(mode.name, -1, "", roomId)) }
             )
         }
         composable(
@@ -69,22 +74,28 @@ fun MindflowRoot(vm: AppViewModel) {
             arguments = listOf(
                 navArgument("mode") { type = NavType.StringType },
                 navArgument("levelId") { type = NavType.IntType },
-                navArgument("dailyId") { type = NavType.StringType; defaultValue = "" }
+                navArgument("dailyId") { type = NavType.StringType; defaultValue = "" },
+                navArgument("roomId") { type = NavType.StringType; defaultValue = "" }
             )
         ) { entry ->
             val mode = entry.arguments?.getString("mode") ?: "MATH_SPRINT"
             val levelId = entry.arguments?.getInt("levelId") ?: -1
             val dailyId = entry.arguments?.getString("dailyId").orEmpty()
+            val roomId = entry.arguments?.getString("roomId").orEmpty()
             PlayScreen(
                 vm = vm,
                 modeId = mode,
                 levelId = levelId,
                 dailyId = dailyId.ifBlank { null },
+                roomId = roomId.ifBlank { null },
                 onExit = { nav.popBackStack() }
             )
         }
         composable(Routes.LEADERBOARD) {
-            LeaderboardScreen(state = state, onBack = { nav.popBackStack() })
+            LeaderboardScreen(vm = vm, state = state, onBack = { nav.popBackStack() })
+        }
+        composable(Routes.ACCOUNT) {
+            AccountScreen(vm = vm, state = state, onBack = { nav.popBackStack() })
         }
         composable(Routes.PROFILE) {
             ProfileScreen(vm = vm, state = state, onBack = { nav.popBackStack() })
